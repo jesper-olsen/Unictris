@@ -122,50 +122,43 @@ fn draw_screen(g: &Game) -> Result<()> {
     let mut stdout = stdout();
 
     for (i, row) in g.board.iter().enumerate() {
-        let i: u16 = (i.try_into()).unwrap();
+        let i: u16 = (i.try_into()).expect("board too big");
 
         crossterm::queue!(stdout, cursor::MoveTo(1, i + 1))?;
-        row.iter()
-            .enumerate()
-            .map(|(j, v)| {
-                let v = *v as u32;
-                let j: u16 = j.try_into().unwrap();
-                crossterm::queue!(stdout, cursor::MoveTo(j * 2 + 1, i + 1)).ok();
-                if v != 0 {
-                    let s = match v {
-                        // 1 => "\u{16A0}\u{16A0}".on_red(),
-                        // 2 => "\u{16A2}\u{16A2}".on_red(),
-                        // 3 => "\u{16A5}\u{16A5}".on_red(),
-                        // 4 => "\u{16A6}\u{16A6}".on_red(),
-                        // 5 => "\u{16BC}\u{16BC}".on_red(),
-                        // 6 => "\u{16AD}\u{16AD}".on_red(),
-                        // _ => "\u{16D2}\u{16D2}".on_red(),
-                        1 => "●●".on_blue(),
-                        2 => "◎◎".blue().on_yellow(),
-                        3 => "□□".on_green(),
-                        4 => "◦◦".on_magenta(),
-                        5 => "○○".on_dark_red(),
-                        6 => "◼◼".on_cyan(),
-                        _ => "◉◉".on_red(),
-                        // 1 => "  ".on_blue(),
-                        // 2 => "  ".on_yellow(),
-                        // 3 => "  ".on_green(),
-                        // 4 => "  ".on_magenta(),
-                        // 5 => "  ".on_dark_red(),
-                        // 6 => "  ".on_cyan(),
-                        // _ => "  ".on_red(),
-                    };
-                    crossterm::queue!(
-                        stdout,
-                        style::PrintStyledContent(s),
-                        cursor::MoveTo((j + 1) * 2 + 1, i + 1)
-                    )
-                    .ok();
-                } else {
-                    crossterm::queue!(stdout, style::PrintStyledContent("  ".white())).ok();
-                }
-            })
-            .for_each(drop);
+        for (j, v) in row.iter().enumerate() {
+            let v = *v as u32;
+            let j: u16 = j.try_into().unwrap();
+            crossterm::queue!(stdout, cursor::MoveTo(j * 2 + 1, i + 1)).ok();
+            let s = match v {
+                0 => "  ".white(),
+                // 1 => "\u{16A0}\u{16A0}".on_red(),
+                // 2 => "\u{16A2}\u{16A2}".on_red(),
+                // 3 => "\u{16A5}\u{16A5}".on_red(),
+                // 4 => "\u{16A6}\u{16A6}".on_red(),
+                // 5 => "\u{16BC}\u{16BC}".on_red(),
+                // 6 => "\u{16AD}\u{16AD}".on_red(),
+                // _ => "\u{16D2}\u{16D2}".on_red(),
+                1 => "●●".on_blue(),
+                2 => "◎◎".blue().on_yellow(),
+                3 => "□□".on_green(),
+                4 => "◦◦".on_magenta(),
+                5 => "○○".on_dark_red(),
+                6 => "◼◼".on_cyan(),
+                _ => "◉◉".on_red(),
+                // 1 => "  ".on_blue(),
+                // 2 => "  ".on_yellow(),
+                // 3 => "  ".on_green(),
+                // 4 => "  ".on_magenta(),
+                // 5 => "  ".on_dark_red(),
+                // 6 => "  ".on_cyan(),
+                // _ => "  ".on_red(),
+            };
+            crossterm::queue!(
+                stdout,
+                style::PrintStyledContent(s),
+                cursor::MoveTo((j + 1) * 2 + 1, i + 1)
+            )?
+        }
     }
     render_game_info(g)?;
     stdout.flush()?;
@@ -228,8 +221,7 @@ fn do_tick(g: &mut Game) -> bool {
         // only update some of the time...
         if check_hit(g, g.x, g.y + 1, g.r) {
             if g.y == 0 {
-                // overflow - game over
-                return false;
+                return false; // overflow - game over
             }
             wipe_filled_rows(g);
             new_tetramino(g);
