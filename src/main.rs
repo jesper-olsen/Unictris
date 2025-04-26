@@ -1,11 +1,11 @@
 use crossterm::{
-    cursor,
-    event::{poll, read, Event, KeyCode, KeyEvent},
+    QueueableCommand, cursor,
+    event::{Event, KeyCode, KeyEvent, poll, read},
     style::{self, Stylize},
-    terminal, QueueableCommand, Result,
+    terminal,
 };
 use rand::prelude::*;
-use std::io::{stdout, Write};
+use std::io::{Result, Write, stdout};
 use std::time;
 
 // Tetrominos - packed into 7 64 bit numbers.
@@ -21,7 +21,8 @@ static BLOCK: [u64; 7] = [
     0x8951_6540_1840_6210,
 ];
 
-const TICK_LEVEL: u64 = 6000;
+const LEVEL_TICK_INCREASE: u64 = 6000;
+const FRAMES_PER_DROP: u64 = 30;
 
 struct Game {
     x: u8, // coor
@@ -85,10 +86,10 @@ fn centered_x(s: &str) -> u16 {
 }
 
 fn level(g: &Game) -> u64 {
-    1 + g.tick / TICK_LEVEL
+    1 + g.tick / LEVEL_TICK_INCREASE
 }
 
-fn render_game_info(g: &Game) {
+fn render_game_info(g: &Game) -> Result<()> {
     let s1: &str = "Unictris - Unicode-powered Tetris";
     let s2 = "Rusty Glyph Edition 2023 ";
 
@@ -98,8 +99,7 @@ fn render_game_info(g: &Game) {
         style::PrintStyledContent(s1.cyan()),
         cursor::MoveTo(centered_x(s2), 3),
         style::PrintStyledContent(s2.yellow()),
-    )
-    .ok();
+    )?;
 
     let i = centered_x("Score : 123456"); /* get a pos base on av score digits */
     crossterm::queue!(
@@ -107,11 +107,11 @@ fn render_game_info(g: &Game) {
         cursor::MoveTo(i, 5.try_into().unwrap()),
         style::PrintStyledContent(format!("Score : {}", g.score).bold().white()),
         cursor::MoveTo(i, 6.try_into().unwrap()),
-        style::PrintStyledContent(format!("Level : {}", level(&g)).bold().white()),
+        style::PrintStyledContent(format!("Level : {}", level(g)).bold().white()),
         cursor::MoveTo(i, 8.try_into().unwrap()),
         style::PrintStyledContent(format!("Shape : {}.{}", g.p, g.r).bold().white()),
-    )
-    .ok();
+    )?;
+    Ok(())
 }
 
 fn draw_screen(g: &Game) -> Result<()> {
@@ -163,7 +163,7 @@ fn draw_screen(g: &Game) -> Result<()> {
             })
             .for_each(drop);
     }
-    render_game_info(g);
+    render_game_info(g)?;
     stdout.flush()?;
     Ok(())
 }
@@ -186,13 +186,7 @@ fn update_piece(g: &mut Game) {
 
 fn wipe_filled_rows(g: &mut Game) {
     for row in g.y..=g.y + height(g.p, g.r) {
-        if g.board[row as usize]
-            .iter()
-            .map(|v| *v as u32)
-            //.fold(1, |p, v| p * v)
-            .product::<u32>()
-            > 0
-        {
+        if g.board[row as usize].iter().all(|&v| v != 0) {
             for i in (1..row).rev() {
                 let i = i as usize;
                 for j in 0..g.board[i + 1].len() {
@@ -228,8 +222,8 @@ fn do_tick(g: &mut Game) -> bool {
     if g.paused {
         return true;
     }
-    g.tick = (g.tick + 1) % std::u64::MAX;
-    if g.tick % 30 <= g.tick / TICK_LEVEL {
+    g.tick = (g.tick + 1) % u64::MAX;
+    if g.tick % FRAMES_PER_DROP <= g.tick / LEVEL_TICK_INCREASE {
         // only update some of the time...
         if check_hit(g, g.x, g.y + 1, g.r) {
             if g.y == 0 {
