@@ -43,20 +43,24 @@ fn num(p: u8, r: u8, i: u8) -> u8 {
     (3 & BLOCK[p as usize] >> (r * 16 + i)) as u8
 }
 
+fn extent(p: u8, r: u8, offset: u8) -> u8 {
+    let (mut min_v, mut max_v) = (u8::MAX, u8::MIN);
+    for i in 0..4 {
+        let v = num(p, r, i * 4 + offset);
+        min_v = min_v.min(v);
+        max_v = max_v.max(v);
+    }
+    max_v - min_v
+}
+
 // calculate width-1 for tetromino
 fn width(p: u8, r: u8) -> u8 {
-    let p = (0..4).map(|i| num(p, r, i * 4 + 2)).fold((0, 9), |m, v| {
-        (std::cmp::max(m.0, v), std::cmp::min(m.1, v))
-    });
-    p.0 - p.1
+    extent(p, r, 2)
 }
 
 // calculate height-1 for tetromino
 fn height(p: u8, r: u8) -> u8 {
-    let p = (0..4).map(|i| num(p, r, i * 4)).fold((0, 9), |m, v| {
-        (std::cmp::max(m.0, v), std::cmp::min(m.1, v))
-    });
-    p.0 - p.1
+    extent(p, r, 0)
 }
 
 fn new_tetramino(g: &mut Game) {
@@ -91,7 +95,7 @@ fn level(g: &Game) -> u64 {
 
 fn render_game_info(g: &Game) -> Result<()> {
     let s1: &str = "Unictris - Unicode-powered Tetris";
-    let s2 = "Rusty Glyph Edition 2023 ";
+    let s2 = "Rusty Glyph Edition 2025 ";
 
     crossterm::queue!(
         stdout(),
@@ -208,14 +212,11 @@ fn check_hit(g: &mut Game, x: u8, y: u8, r: u8) -> bool {
         return true;
     }
     set_piece(g, g.px, g.py, g.pr, 0);
-
-    let hits = (0..4)
-        .filter(|i| {
-            g.board[(y + num(g.p, r, i * 4)) as usize][(x + num(g.p, r, i * 4 + 2)) as usize] != 0
-        })
-        .count();
+    let hit = (0..4).any(|i| {
+        g.board[(y + num(g.p, r, i * 4)) as usize][(x + num(g.p, r, i * 4 + 2)) as usize] != 0
+    });
     set_piece(g, g.px, g.py, g.pr, g.p + 1);
-    hits > 0
+    hit
 }
 
 fn do_tick(g: &mut Game) -> bool {
@@ -353,9 +354,9 @@ fn main() -> Result<()> {
         x: 0,
         y: 0,
         r: 0,
-        pr: 0,
         px: 0,
         py: 0,
+        pr: 0,
         p: 0,
         tick: 0,
         score: 0,
