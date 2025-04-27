@@ -54,9 +54,9 @@ fn coor_y(p: u8, r: u8, i: u8) -> u8 {
     num(p, r, 4 * i)
 }
 
-fn extent<F>(p: u8, r: u8, mut coor: F) -> u8
+fn extent<F>(p: u8, r: u8, coor: F) -> u8
 where
-    F: FnMut(u8, u8, u8) -> u8,
+    F: Fn(u8, u8, u8) -> u8,
 {
     let (mut min_v, mut max_v) = (u8::MAX, u8::MIN);
     for i in 0..4 {
@@ -173,25 +173,32 @@ fn draw_screen(g: &Game) -> Result<()> {
         }
     }
     render_game_info(g)?;
-    stdout.flush()?;
-    Ok(())
+    stdout.flush()
 }
 
-// place a tetramino on the board
-fn set_piece(g: &mut Game, x: u8, y: u8, r: u8, v: u8) {
-    // 4 blocks
-    for i in 0..4 {
-        g.board[(coor_y(g.p, r, i) + y) as usize][(coor_x(g.p, r, i) + x) as usize] = v;
+impl Game {
+    fn draw_tetramino(&mut self, v: u8) {
+        // 4 blocks
+        for i in 0..4 {
+            let idx_y = coor_y(self.p, self.pr, i) + self.py;
+            let idx_x = coor_x(self.p, self.pr, i) + self.px;
+            self.board[idx_y as usize][idx_x as usize] = v;
+        }
+    }
+
+    fn set_tetramino(&mut self) {
+        self.draw_tetramino(self.p + 1);
+    }
+    fn clear_tetramino(&mut self) {
+        self.draw_tetramino(0);
     }
 }
 
 // move a piece from old (p*) coords to new
 fn update_piece(g: &mut Game) {
-    set_piece(g, g.px, g.py, g.pr, 0); // clear
-    g.px = g.x;
-    g.py = g.y;
-    g.pr = g.r;
-    set_piece(g, g.x, g.y, g.r, g.p + 1);
+    g.clear_tetramino();
+    (g.px, g.py, g.pr) = (g.x, g.y, g.r);
+    g.set_tetramino();
 }
 
 // check if placing p at (x,y,r) will hit something
@@ -200,10 +207,10 @@ fn check_hit(g: &mut Game, x: u8, y: u8, r: u8) -> bool {
     if y + height(g.p, r) > bottom {
         return true;
     }
-    set_piece(g, g.px, g.py, g.pr, 0);
+    g.clear_tetramino();
     let hit = (0..4)
         .any(|i| g.board[(y + coor_y(g.p, r, i)) as usize][(x + coor_x(g.p, r, i)) as usize] != 0);
-    set_piece(g, g.px, g.py, g.pr, g.p + 1);
+    g.set_tetramino();
     hit
 }
 
@@ -353,8 +360,7 @@ fn box_(x: u16, y: u16, width: u16, height: u16) -> Result<()> {
         cursor::MoveTo(x + width + 2, y + height + 2)
     )?;
 
-    stdout.flush()?;
-    Ok(())
+    stdout.flush()
 }
 
 fn main() -> Result<()> {
