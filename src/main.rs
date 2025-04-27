@@ -28,9 +28,6 @@ const BOARD_WIDTH: u8 = 10;
 const BOARD_HEIGHT: u8 = 20;
 
 struct Game {
-    x: u8, // next coor
-    y: u8,
-    r: u8,  // orientation
     px: u8, // current coor
     py: u8,
     pr: u8, // orientation
@@ -77,12 +74,9 @@ fn height(p: u8, r: u8) -> u8 {
 
 fn new_tetramino(g: &mut Game) {
     g.p = random::<u8>() % 7; // tetromino
-    g.r = random::<u8>() % 4; // orientation
-    g.x = random::<u8>() % (10 - width(g.p, g.r));
-    g.y = 0;
+    g.pr = random::<u8>() % 4; // orientation
+    g.px = random::<u8>() % (10 - width(g.p, g.pr));
     g.py = 0;
-    g.pr = g.r;
-    g.px = g.x;
 }
 
 fn centered_x(s: &str) -> u16 {
@@ -125,7 +119,7 @@ fn render_game_info(g: &Game) -> Result<()> {
         cursor::MoveTo(i, 6.try_into().unwrap()),
         style::PrintStyledContent(format!("Level : {}", level(g)).bold().white()),
         cursor::MoveTo(i, 8.try_into().unwrap()),
-        style::PrintStyledContent(format!("Shape : {}.{}", g.p, g.r).bold().white()),
+        style::PrintStyledContent(format!("Shape : {}.{}", g.p, g.pr).bold().white()),
     )?;
     Ok(())
 }
@@ -189,33 +183,32 @@ impl Game {
     fn set_tetramino(&mut self) {
         self.draw_tetramino(self.p + 1);
     }
+
     fn clear_tetramino(&mut self) {
         self.draw_tetramino(0);
     }
 }
 
-// move a piece from old (p*) coords to new
-fn update_piece(g: &mut Game) {
-    g.clear_tetramino();
-    (g.px, g.py, g.pr) = (g.x, g.y, g.r);
-    g.set_tetramino();
-}
-
 // check if placing p at (x,y,r) will hit something
-fn check_hit(g: &mut Game, x: u8, y: u8, r: u8) -> bool {
-    let bottom: u8 = (g.board.len() - 1).try_into().unwrap();
-    if y + height(g.p, r) > bottom {
-        return true;
+fn try_move(g: &mut Game, x: u8, y: u8, r: u8) -> bool {
+    if y + height(g.p, r) >= BOARD_HEIGHT {
+        return false;
     }
     g.clear_tetramino();
     let hit = (0..4)
         .any(|i| g.board[(y + coor_y(g.p, r, i)) as usize][(x + coor_x(g.p, r, i)) as usize] != 0);
     g.set_tetramino();
-    hit
+    if !hit {
+        g.clear_tetramino();
+        (g.px, g.py, g.pr) = (x, y, r);
+        g.set_tetramino();
+    }
+    !hit
 }
 
 fn wipe_filled_rows(g: &mut Game) {
-    for row in g.y..=g.y + height(g.p, g.r) {
+    //for row in g.y..=g.y + height(g.p, g.r) {
+    for row in g.py..=g.py + height(g.p, g.pr) {
         if g.board[row as usize].iter().all(|&v| v != 0) {
             for i in (1..row).rev() {
                 let i = i as usize;
@@ -234,15 +227,12 @@ fn do_tick(g: &mut Game) -> bool {
     g.tick = (g.tick + 1) % u64::MAX;
     if g.tick % FRAMES_PER_DROP <= g.tick / LEVEL_TICK_INCREASE {
         // only update some of the time...
-        if check_hit(g, g.x, g.y + 1, g.r) {
-            if g.y == 0 {
+        if !try_move(g, g.px, g.py + 1, g.pr) {
+            if g.py == 0 {
                 return false; // overflow - game over
             }
             wipe_filled_rows(g);
             new_tetramino(g);
-        } else {
-            g.y += 1;
-            update_piece(g);
         }
     }
     true
@@ -264,16 +254,16 @@ fn runloop(g: &mut Game) -> Result<()> {
                     code: KeyCode::Left,
                     ..
                 })) => {
-                    if g.x > 0 && !check_hit(g, g.x - 1, g.y, g.r) {
-                        g.x -= 1;
+                    if g.px > 0 {
+                        try_move(g, g.px - 1, g.py, g.pr);
                     }
                 }
                 Ok(Event::Key(KeyEvent {
                     code: KeyCode::Right,
                     ..
                 })) => {
-                    if g.x + width(g.p, g.r) < BOARD_WIDTH - 1 && !check_hit(g, g.x + 1, g.y, g.r) {
-                        g.x += 1;
+                    if g.px + width(g.p, g.pr) < BOARD_WIDTH - 1 {
+                        try_move(g, g.px + 1, g.py, g.pr);
                     }
                 }
                 Ok(Event::Key(KeyEvent {
@@ -281,9 +271,8 @@ fn runloop(g: &mut Game) -> Result<()> {
                     ..
                 })) => {
                     // drop
-                    while !check_hit(g, g.x, g.y + 1, g.r) {
-                        g.y += 1;
-                        update_piece(g);
+                    while try_move(g, g.px, g.py + 1, g.pr) {
+                        continue;
                     }
                     wipe_filled_rows(g);
                     new_tetramino(g);
@@ -291,22 +280,18 @@ fn runloop(g: &mut Game) -> Result<()> {
                 Ok(Event::Key(KeyEvent {
                     code: KeyCode::Up, ..
                 })) => {
-                    let new_r = (g.r + 1) % 4;
+                    let new_r = (g.pr + 1) % 4;
                     // wall kick - shift left to make it fit
-                    let new_x = if g.x + width(g.p, new_r) >= BOARD_WIDTH {
+                    let new_x = if g.px + width(g.p, new_r) >= BOARD_WIDTH {
                         BOARD_WIDTH - width(g.p, new_r) - 1
                     } else {
-                        g.x
+                        g.px
                     };
-                    if !check_hit(g, new_x, g.y, g.r) {
-                        g.r = new_r;
-                        g.x = new_x;
-                    }
+                    try_move(g, new_x, g.py, new_r);
                 }
                 _ => (),
             }
         }
-        update_piece(g);
         draw_screen(g)?;
     }
     Ok(())
@@ -361,9 +346,6 @@ fn box_(x: u16, y: u16, width: u16, height: u16) -> Result<()> {
 
 fn main() -> Result<()> {
     let mut game = Game {
-        x: 0,
-        y: 0,
-        r: 0,
         px: 0,
         py: 0,
         pr: 0,
