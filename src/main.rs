@@ -219,14 +219,10 @@ fn wipe_filled_rows(g: &mut Game) {
         if g.board[row as usize].iter().all(|&v| v != 0) {
             for i in (1..row).rev() {
                 let i = i as usize;
-                for j in 0..g.board[i + 1].len() {
-                    g.board[i + 1][j] = g.board[i][j];
-                }
-                for j in 0..g.board[0].len() {
-                    g.board[0][j] = 0;
-                }
-                g.score += 1;
+                g.board[i + 1] = g.board[i];
             }
+            g.board[0].fill(0);
+            g.score += 1;
         }
     }
 }
