@@ -6,12 +6,11 @@ use crossterm::{
 };
 use rand::prelude::*;
 use std::io::{Result, Write, stdout};
-use std::{fmt, time};
+use std::time;
 
-// Tetrominos - packed into 7 16-bit numbers.
-// Each tetromino shape is 4 squares inside a 4x4 block - we store x and y coordinate for each square,
-// hence we need need 4*(2+2)=16 bits to describe one shape,
-static BLOCK: [u16; 7] = [0x2154, 0x6510, 0x5140, 0x9840, 0x1654, 0x3210, 0x8951];
+mod shape;
+
+use shape::Shape;
 
 const LEVEL_TICK_INCREASE: u64 = 6000;
 const FRAMES_PER_DROP: u64 = 30;
@@ -27,82 +26,6 @@ struct Game {
     score: u32,
     board: [[u8; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
     paused: bool,
-}
-
-impl fmt::Display for Shape {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for r in 0..4 {
-            let (w, h) = self.dim(r);
-            writeln!(f, "Shape {r} dim: {w}x{h}")?;
-            let mut a =
-                [[false; Shape::TETROMINO_WIDTH as usize]; Shape::TETROMINO_HEIGHT as usize];
-            for (x, y) in self.coor(r) {
-                a[y as usize][x as usize] = true;
-            }
-            for row in a {
-                for b in row {
-                    write!(f, "{} ", if b { " X " } else { " O " })?
-                }
-                writeln!(f)?;
-            }
-        }
-        Ok(())
-    }
-}
-
-struct Shape(u8);
-
-impl Shape {
-    const TETROMINO_HEIGHT: u8 = 4;
-    const TETROMINO_WIDTH: u8 = 4;
-
-    pub const fn kind(&self) -> u8 {
-        self.0
-    }
-
-    // rotate (x,y) coordinates by 0, 90, 180 or 270 degrees
-    const fn rotate(x: u8, y: u8, r: u8) -> (u8, u8) {
-        match r {
-            0 => (x, y),
-            1 => (Shape::TETROMINO_HEIGHT - 1 - y, x),
-            2 => (
-                Shape::TETROMINO_WIDTH - 1 - x,
-                Shape::TETROMINO_HEIGHT - 1 - y,
-            ),
-            3 => (y, Shape::TETROMINO_WIDTH - 1 - x),
-            _ => unimplemented!(),
-        }
-    }
-
-    // each shape has 4 blocks on
-    fn coor(&self, r: u8) -> [(u8, u8); 4] {
-        let mut a = [(0, 0); 4];
-        let mut min_x = u8::MAX;
-        let mut min_y = u8::MAX;
-        for (i, e) in a.iter_mut().enumerate() {
-            let x = (3 & BLOCK[self.0 as usize] >> 4 * i + 2) as u8;
-            let y = (3 & BLOCK[self.0 as usize] >> 4 * i) as u8;
-            *e = Self::rotate(x, y, r);
-            min_x = min_x.min(e.0);
-            min_y = min_y.min(e.1);
-        }
-        a.iter_mut().for_each(|e| {
-            e.0 -= min_x;
-            e.1 -= min_y
-        });
-        a
-    }
-
-    // width, height of shape
-    fn dim(&self, r: u8) -> (u8, u8) {
-        let mut max_x = u8::MIN;
-        let mut max_y = u8::MIN;
-        for (x, y) in self.coor(r) {
-            max_x = max_x.max(x);
-            max_y = max_y.max(y);
-        }
-        (max_x + 1, max_y + 1)
-    }
 }
 
 fn centered_x(s: &str) -> u16 {
@@ -225,7 +148,7 @@ impl Game {
     }
 
     fn new_tetromino(&mut self) {
-        self.shape = Shape(random::<u8>() % 7);
+        self.shape = Shape::new(random::<u8>() % 7);
         self.orientation = random::<u8>() % 4;
         let (width, _) = self.shape.dim(self.orientation);
         self.px = random::<u8>() % (BOARD_WIDTH - width);
@@ -246,7 +169,7 @@ impl Game {
         }
     }
 
-    // move tetromino if does not hit anything
+    // move tetromino if it does not hit anything
     fn try_move(&mut self, m: Move) -> bool {
         let (x, y, r) = match m {
             Move::Left if self.px > 0 => (self.px - 1, self.py, self.orientation),
@@ -299,7 +222,6 @@ impl Game {
         self.tick = (self.tick + 1) % u64::MAX;
         if self.tick % FRAMES_PER_DROP <= self.tick / LEVEL_TICK_INCREASE {
             // only update some of the time...
-            //if !self.try_move(self.px, self.py + 1, self.orientation) {
             if !self.try_move(Move::Down) {
                 if self.py == 0 {
                     return false; // overflow - game over
@@ -411,7 +333,7 @@ fn main() -> Result<()> {
         px: 0,
         py: 0,
         orientation: 0,
-        shape: Shape(0),
+        shape: Shape::new(0),
         tick: 0,
         score: 0,
         board: [[0; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
