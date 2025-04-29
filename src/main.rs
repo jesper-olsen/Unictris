@@ -38,12 +38,152 @@ impl Tetromino {
     }
 }
 
+struct Board {
+    board: [[u8; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
+}
+
+impl Default for Board {
+    fn default() -> Board {
+        Board {
+            board: [[0; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
+        }
+    }
+}
+
+impl Board {
+    fn set(&mut self, x: u8, y: u8, v: u8) {
+        self.board[y as usize][x as usize] = v
+    }
+
+    fn get(&self, x: u8, y: u8) -> u8 {
+        self.board[y as usize][x as usize]
+    }
+
+    fn is_filled(&self, row: u8) -> bool {
+        self.board[row as usize].iter().all(|&v| v != 0)
+    }
+
+    fn wipe(&mut self, row: u8) {
+        for i in (0..row).rev() {
+            let i = i as usize;
+            self.board[i + 1] = self.board[i];
+        }
+        self.board[0].fill(0);
+    }
+}
+
 struct Game {
     tetromino: Tetromino, // active tetromino
     tick: u64,
     score: u32,
-    board: [[u8; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
+    board: Board,
     paused: bool,
+}
+
+enum Move {
+    Left,
+    Right,
+    Down,
+    Rotate,
+}
+
+impl Game {
+    fn draw_tetromino(&mut self, v: u8) {
+        for (x, y) in self.tetromino.shape.coor(self.tetromino.orientation) {
+            let idx_x = x + self.tetromino.px;
+            let idx_y = y + self.tetromino.py;
+            self.board.set(idx_x, idx_y, v);
+        }
+    }
+
+    fn set_tetromino(&mut self) {
+        self.draw_tetromino(self.tetromino.shape.kind() + 1);
+    }
+
+    fn clear_tetromino(&mut self) {
+        self.draw_tetromino(0);
+    }
+
+    fn level(&self) -> u64 {
+        1 + self.tick / LEVEL_TICK_INCREASE
+    }
+
+    fn wipe_filled_rows(&mut self) {
+        let (_, height) = self.tetromino.shape.dim(self.tetromino.orientation);
+        for row in self.tetromino.py..self.tetromino.py + height {
+            if self.board.is_filled(row) {
+                self.board.wipe(row);
+                self.score += 1;
+            }
+        }
+    }
+
+    // move tetromino if it does not hit anything
+    fn try_move(&mut self, m: Move) -> bool {
+        let tet = &mut self.tetromino;
+        let (x, y, r) = match m {
+            Move::Left if tet.px > 0 => (tet.px - 1, tet.py, tet.orientation),
+            Move::Right => {
+                let (width, _) = tet.shape.dim(tet.orientation);
+                if tet.px + width < BOARD_WIDTH {
+                    (tet.px + 1, tet.py, tet.orientation)
+                } else {
+                    return false;
+                }
+            }
+            Move::Down => (tet.px, tet.py + 1, tet.orientation),
+            Move::Rotate => {
+                let new_r = (tet.orientation + 1) % 4;
+                // wall kick - shift left to make it fit
+                let (width, _) = tet.shape.dim(new_r);
+                let new_x = if tet.px + width > BOARD_WIDTH {
+                    BOARD_WIDTH - width
+                } else {
+                    tet.px
+                };
+                (new_x, tet.py, new_r)
+            }
+            _ => return false,
+        };
+
+        let (_, height) = tet.shape.dim(r);
+        if y + height > BOARD_HEIGHT {
+            return false;
+        }
+        self.clear_tetromino();
+        let hit = self.tetromino.shape.coor(r).into_iter().any(|(sx, sy)| {
+            y + sy >= BOARD_HEIGHT || x + sx >= BOARD_WIDTH || self.board.get(x + sx, y + sy) != 0
+        });
+        self.set_tetromino();
+        if !hit {
+            self.clear_tetromino();
+            (
+                self.tetromino.px,
+                self.tetromino.py,
+                self.tetromino.orientation,
+            ) = (x, y, r);
+            self.set_tetromino();
+        }
+        !hit
+    }
+
+    fn do_tick(&mut self) -> bool {
+        if self.paused {
+            return true;
+        }
+        self.tick = (self.tick + 1) % u64::MAX;
+        if self.tick % FRAMES_PER_DROP <= self.tick / LEVEL_TICK_INCREASE {
+            // only update some of the time...
+            if !self.try_move(Move::Down) {
+                if self.tetromino.py == 0 {
+                    return false; // overflow - game over
+                }
+                self.wipe_filled_rows();
+                self.tetromino = Tetromino::new();
+            }
+        }
+        true
+    }
 }
 
 fn centered_x(s: &str) -> u16 {
@@ -98,15 +238,10 @@ fn render_game_info(g: &Game) -> Result<()> {
 fn draw_screen(g: &Game) -> Result<()> {
     let mut stdout = stdout();
 
-    for (i, row) in g.board.iter().enumerate() {
-        let i: u16 = (i.try_into()).expect("board too big");
-
-        crossterm::queue!(stdout, cursor::MoveTo(1, i + 1))?;
-        for (j, v) in row.iter().enumerate() {
-            let v = *v as u32;
-            let j: u16 = j.try_into().unwrap();
-            crossterm::queue!(stdout, cursor::MoveTo(j * 2 + 1, i + 1)).ok();
-            let s = match v {
+    for y in 0..BOARD_HEIGHT {
+        for x in 0..BOARD_WIDTH {
+            crossterm::queue!(stdout, cursor::MoveTo(x as u16 * 2 + 1, y as u16 + 1))?;
+            let s = match g.board.get(x, y) {
                 0 => "  ".white(),
                 // 1 => "\u{16A0}\u{16A0}".on_red(),
                 // 2 => "\u{16A2}\u{16A2}".on_red(),
@@ -133,124 +268,12 @@ fn draw_screen(g: &Game) -> Result<()> {
             crossterm::queue!(
                 stdout,
                 style::PrintStyledContent(s),
-                cursor::MoveTo((j + 1) * 2 + 1, i + 1)
+                cursor::MoveTo((x as u16 + 1) * 2 + 1, y as u16 + 1)
             )?
         }
     }
     render_game_info(g)?;
     stdout.flush()
-}
-
-enum Move {
-    Left,
-    Right,
-    Down,
-    Rotate,
-}
-
-impl Game {
-    fn draw_tetromino(&mut self, v: u8) {
-        for (x, y) in self.tetromino.shape.coor(self.tetromino.orientation) {
-            let idx_x = x + self.tetromino.px;
-            let idx_y = y + self.tetromino.py;
-            self.board[idx_y as usize][idx_x as usize] = v;
-        }
-    }
-
-    fn set_tetromino(&mut self) {
-        self.draw_tetromino(self.tetromino.shape.kind() + 1);
-    }
-
-    fn clear_tetromino(&mut self) {
-        self.draw_tetromino(0);
-    }
-
-    fn level(&self) -> u64 {
-        1 + self.tick / LEVEL_TICK_INCREASE
-    }
-
-    fn wipe_filled_rows(&mut self) {
-        let (_, height) = self.tetromino.shape.dim(self.tetromino.orientation);
-        for row in self.tetromino.py..self.tetromino.py + height {
-            if self.board[row as usize].iter().all(|&v| v != 0) {
-                for i in (1..row).rev() {
-                    let i = i as usize;
-                    self.board[i + 1] = self.board[i];
-                }
-                self.board[0].fill(0);
-                self.score += 1;
-            }
-        }
-    }
-
-    // move tetromino if it does not hit anything
-    fn try_move(&mut self, m: Move) -> bool {
-        let tet = &mut self.tetromino;
-        let (x, y, r) = match m {
-            Move::Left if tet.px > 0 => (tet.px - 1, tet.py, tet.orientation),
-            Move::Right => {
-                let (width, _) = tet.shape.dim(tet.orientation);
-                if tet.px + width < BOARD_WIDTH {
-                    (tet.px + 1, tet.py, tet.orientation)
-                } else {
-                    return false;
-                }
-            }
-            Move::Down => (tet.px, tet.py + 1, tet.orientation),
-            Move::Rotate => {
-                let new_r = (tet.orientation + 1) % 4;
-                // wall kick - shift left to make it fit
-                let (width, _) = tet.shape.dim(new_r);
-                let new_x = if tet.px + width > BOARD_WIDTH {
-                    BOARD_WIDTH - width
-                } else {
-                    tet.px
-                };
-                (new_x, tet.py, new_r)
-            }
-            _ => return false,
-        };
-
-        let (_, height) = tet.shape.dim(r);
-        if y + height > BOARD_HEIGHT {
-            return false;
-        }
-        self.clear_tetromino();
-        let hit = self.tetromino.shape.coor(r).into_iter().any(|(sx, sy)| {
-            y + sy >= BOARD_HEIGHT
-                || x + sx >= BOARD_WIDTH
-                || self.board[(y + sy) as usize][(x + sx) as usize] != 0
-        });
-        self.set_tetromino();
-        if !hit {
-            self.clear_tetromino();
-            (
-                self.tetromino.px,
-                self.tetromino.py,
-                self.tetromino.orientation,
-            ) = (x, y, r);
-            self.set_tetromino();
-        }
-        !hit
-    }
-
-    fn do_tick(&mut self) -> bool {
-        if self.paused {
-            return true;
-        }
-        self.tick = (self.tick + 1) % u64::MAX;
-        if self.tick % FRAMES_PER_DROP <= self.tick / LEVEL_TICK_INCREASE {
-            // only update some of the time...
-            if !self.try_move(Move::Down) {
-                if self.tetromino.py == 0 {
-                    return false; // overflow - game over
-                }
-                self.wipe_filled_rows();
-                self.tetromino = Tetromino::new();
-            }
-        }
-        true
-    }
 }
 
 fn runloop(g: &mut Game) -> Result<()> {
@@ -352,7 +375,7 @@ fn main() -> Result<()> {
         tetromino: Tetromino::new(),
         tick: 0,
         score: 0,
-        board: [[0; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
+        board: Board::default(),
         paused: false,
     };
 
