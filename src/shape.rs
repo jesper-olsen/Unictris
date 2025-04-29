@@ -55,31 +55,39 @@ impl Shape {
     }
 
     // each shape has 4 blocks on - return x,y of those four blocks
-    pub fn coor(&self, r: u8) -> [(u8, u8); 4] {
+    pub const fn coor(&self, r: u8) -> [(u8, u8); 4] {
         let mut a = [(0, 0); 4];
         let mut min_x = u8::MAX;
         let mut min_y = u8::MAX;
-        for (i, e) in a.iter_mut().enumerate() {
-            let x = (3 & BLOCK[self.0 as usize] >> 4 * i + 2) as u8;
-            let y = (3 & BLOCK[self.0 as usize] >> 4 * i) as u8;
-            *e = Self::rotate(x, y, r);
-            min_x = min_x.min(e.0);
-            min_y = min_y.min(e.1);
+        let mut i = 0;
+        while i < Shape::TETROMINO_WIDTH as usize {
+            let block = BLOCK[self.0 as usize];
+            let x = (3 & block >> 4 * i + 2) as u8;
+            let y = (3 & block >> 4 * i) as u8;
+            a[i] = Self::rotate(x, y, r);
+            min_x = if min_x <= a[i].0 { min_x } else { a[i].0 };
+            min_y = if min_y <= a[i].1 { min_y } else { a[i].1 };
+            i += 1;
         }
-        a.iter_mut().for_each(|e| {
-            e.0 -= min_x;
-            e.1 -= min_y
-        });
+        i = 0;
+        while i < Shape::TETROMINO_WIDTH as usize {
+            a[i].0 -= min_x;
+            a[i].1 -= min_y;
+            i += 1;
+        }
         a
     }
 
     // width, height of shape
-    pub fn dim(&self, r: u8) -> (u8, u8) {
+    pub const fn dim(&self, r: u8) -> (u8, u8) {
         let mut max_x = u8::MIN;
         let mut max_y = u8::MIN;
-        for (x, y) in self.coor(r) {
-            max_x = max_x.max(x);
-            max_y = max_y.max(y);
+        let a = self.coor(r);
+        let mut i = 0;
+        while i < a.len() {
+            max_x = if max_x >= a[i].0 { max_x } else { a[i].0 };
+            max_y = if max_y >= a[i].1 { max_y } else { a[i].1 };
+            i += 1;
         }
         (max_x + 1, max_y + 1)
     }
