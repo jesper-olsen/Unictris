@@ -17,11 +17,29 @@ const FRAMES_PER_DROP: u64 = 30;
 const BOARD_WIDTH: u8 = 10;
 const BOARD_HEIGHT: u8 = 20;
 
-struct Game {
+struct Tetromino {
     px: u8, // shape location
     py: u8,
     orientation: u8,
     shape: Shape,
+}
+
+impl Tetromino {
+    fn new() -> Self {
+        let orientation = random::<u8>() % 4;
+        let shape = Shape::new(random::<u8>() % 7);
+        let (width, _) = shape.dim(orientation);
+        Tetromino {
+            shape,
+            orientation,
+            px: random::<u8>() % (BOARD_WIDTH - width),
+            py: 0,
+        }
+    }
+}
+
+struct Game {
+    tetromino: Tetromino, // active tetromino
     tick: u64,
     score: u32,
     board: [[u8; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
@@ -30,7 +48,7 @@ struct Game {
 
 fn centered_x(s: &str) -> u16 {
     let leftedge: u16 = 25;
-    let n: u16 = s.len().try_into().unwrap();
+    let n: u16 = s.len().try_into().expect("really long string");
 
     match terminal::size() {
         Ok((cols, _rows)) => {
@@ -65,9 +83,13 @@ fn render_game_info(g: &Game) -> Result<()> {
         style::PrintStyledContent(format!("Level : {}", g.level()).bold().white()),
         cursor::MoveTo(i, 8.try_into().unwrap()),
         style::PrintStyledContent(
-            format!("Shape : {}.{}", g.shape.kind(), g.orientation)
-                .bold()
-                .white()
+            format!(
+                "Shape : {}.{}",
+                g.tetromino.shape.kind(),
+                g.tetromino.orientation
+            )
+            .bold()
+            .white()
         ),
     )?;
     Ok(())
@@ -128,15 +150,15 @@ enum Move {
 
 impl Game {
     fn draw_tetromino(&mut self, v: u8) {
-        for (x, y) in self.shape.coor(self.orientation) {
-            let idx_x = x + self.px;
-            let idx_y = y + self.py;
+        for (x, y) in self.tetromino.shape.coor(self.tetromino.orientation) {
+            let idx_x = x + self.tetromino.px;
+            let idx_y = y + self.tetromino.py;
             self.board[idx_y as usize][idx_x as usize] = v;
         }
     }
 
     fn set_tetromino(&mut self) {
-        self.draw_tetromino(self.shape.kind() + 1);
+        self.draw_tetromino(self.tetromino.shape.kind() + 1);
     }
 
     fn clear_tetromino(&mut self) {
@@ -147,17 +169,9 @@ impl Game {
         1 + self.tick / LEVEL_TICK_INCREASE
     }
 
-    fn new_tetromino(&mut self) {
-        self.shape = Shape::new(random::<u8>() % 7);
-        self.orientation = random::<u8>() % 4;
-        let (width, _) = self.shape.dim(self.orientation);
-        self.px = random::<u8>() % (BOARD_WIDTH - width);
-        self.py = 0;
-    }
-
     fn wipe_filled_rows(&mut self) {
-        let (_, height) = self.shape.dim(self.orientation);
-        for row in self.py..self.py + height {
+        let (_, height) = self.tetromino.shape.dim(self.tetromino.orientation);
+        for row in self.tetromino.py..self.tetromino.py + height {
             if self.board[row as usize].iter().all(|&v| v != 0) {
                 for i in (1..row).rev() {
                     let i = i as usize;
@@ -171,37 +185,38 @@ impl Game {
 
     // move tetromino if it does not hit anything
     fn try_move(&mut self, m: Move) -> bool {
+        let tet = &mut self.tetromino;
         let (x, y, r) = match m {
-            Move::Left if self.px > 0 => (self.px - 1, self.py, self.orientation),
+            Move::Left if tet.px > 0 => (tet.px - 1, tet.py, tet.orientation),
             Move::Right => {
-                let (width, _) = self.shape.dim(self.orientation);
-                if self.px + width < BOARD_WIDTH {
-                    (self.px + 1, self.py, self.orientation)
+                let (width, _) = tet.shape.dim(tet.orientation);
+                if tet.px + width < BOARD_WIDTH {
+                    (tet.px + 1, tet.py, tet.orientation)
                 } else {
                     return false;
                 }
             }
-            Move::Down => (self.px, self.py + 1, self.orientation),
+            Move::Down => (tet.px, tet.py + 1, tet.orientation),
             Move::Rotate => {
-                let new_r = (self.orientation + 1) % 4;
+                let new_r = (tet.orientation + 1) % 4;
                 // wall kick - shift left to make it fit
-                let (width, _) = self.shape.dim(new_r);
-                let new_x = if self.px + width > BOARD_WIDTH {
+                let (width, _) = tet.shape.dim(new_r);
+                let new_x = if tet.px + width > BOARD_WIDTH {
                     BOARD_WIDTH - width
                 } else {
-                    self.px
+                    tet.px
                 };
-                (new_x, self.py, new_r)
+                (new_x, tet.py, new_r)
             }
             _ => return false,
         };
 
-        let (_, height) = self.shape.dim(r);
+        let (_, height) = tet.shape.dim(r);
         if y + height > BOARD_HEIGHT {
             return false;
         }
         self.clear_tetromino();
-        let hit = self.shape.coor(r).into_iter().any(|(sx, sy)| {
+        let hit = self.tetromino.shape.coor(r).into_iter().any(|(sx, sy)| {
             y + sy >= BOARD_HEIGHT
                 || x + sx >= BOARD_WIDTH
                 || self.board[(y + sy) as usize][(x + sx) as usize] != 0
@@ -209,7 +224,11 @@ impl Game {
         self.set_tetromino();
         if !hit {
             self.clear_tetromino();
-            (self.px, self.py, self.orientation) = (x, y, r);
+            (
+                self.tetromino.px,
+                self.tetromino.py,
+                self.tetromino.orientation,
+            ) = (x, y, r);
             self.set_tetromino();
         }
         !hit
@@ -223,11 +242,11 @@ impl Game {
         if self.tick % FRAMES_PER_DROP <= self.tick / LEVEL_TICK_INCREASE {
             // only update some of the time...
             if !self.try_move(Move::Down) {
-                if self.py == 0 {
+                if self.tetromino.py == 0 {
                     return false; // overflow - game over
                 }
                 self.wipe_filled_rows();
-                self.new_tetromino();
+                self.tetromino = Tetromino::new();
             }
         }
         true
@@ -266,7 +285,7 @@ fn runloop(g: &mut Game) -> Result<()> {
                         continue;
                     }
                     g.wipe_filled_rows();
-                    g.new_tetromino();
+                    g.tetromino = Tetromino::new();
                 }
                 Ok(Event::Key(KeyEvent {
                     code: KeyCode::Up, ..
@@ -330,16 +349,12 @@ fn box_(x: u16, y: u16, width: u16, height: u16) -> Result<()> {
 
 fn main() -> Result<()> {
     let mut game = Game {
-        px: 0,
-        py: 0,
-        orientation: 0,
-        shape: Shape::new(0),
+        tetromino: Tetromino::new(),
         tick: 0,
         score: 0,
         board: [[0; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
         paused: false,
     };
-    game.new_tetromino();
 
     crossterm::queue!(
         stdout(),
