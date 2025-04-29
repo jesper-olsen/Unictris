@@ -6,21 +6,12 @@ use crossterm::{
 };
 use rand::prelude::*;
 use std::io::{Result, Write, stdout};
-use std::time;
+use std::{fmt, time};
 
-// Tetrominos - packed into 7 64 bit numbers.
+// Tetrominos - packed into 7 16-bit numbers.
 // Each tetromino shape is 4 squares inside a 4x4 block - we store x and y coordinate for each square,
 // hence we need need 4*(2+2)=16 bits to describe one shape,
-// and 448 bits in total: 7 tetrominos * 4 orientations * 16 bits .
-static BLOCK: [u64; 7] = [
-    0x2154_9540_2154_9540,
-    0x6510_8451_6510_8451,
-    0x5140_5140_5140_5140,
-    0x9840_2140_9510_2654,
-    0x1654_5840_5210_4951,
-    0x3210_c840_3210_c840,
-    0x8951_6540_1840_6210,
-];
+static BLOCK: [u16; 7] = [0x2154, 0x6510, 0x5140, 0x9840, 0x1654, 0x3210, 0x8951];
 
 const LEVEL_TICK_INCREASE: u64 = 6000;
 const FRAMES_PER_DROP: u64 = 30;
@@ -28,55 +19,90 @@ const BOARD_WIDTH: u8 = 10;
 const BOARD_HEIGHT: u8 = 20;
 
 struct Game {
-    px: u8, // current coor
+    px: u8, // shape location
     py: u8,
-    pr: u8, // orientation
-    p: u8,  // tetromino #
+    orientation: u8,
+    shape: Shape,
     tick: u64,
     score: u32,
     board: [[u8; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
     paused: bool,
 }
 
-// extract a bit packed number from a block
-fn num(p: u8, r: u8, i: u8) -> u8 {
-    (3 & BLOCK[p as usize] >> (r * 16 + i)) as u8
-}
-
-fn coor_x(p: u8, r: u8, i: u8) -> u8 {
-    num(p, r, 4 * i + 2)
-}
-
-fn coor_y(p: u8, r: u8, i: u8) -> u8 {
-    num(p, r, 4 * i)
-}
-
-fn extent<F>(p: u8, r: u8, coor: F) -> u8
-where
-    F: Fn(u8, u8, u8) -> u8,
-{
-    let (mut min_v, mut max_v) = (u8::MAX, u8::MIN);
-    for i in 0..4 {
-        let v = coor(p, r, i);
-        min_v = min_v.min(v);
-        max_v = max_v.max(v);
+impl fmt::Display for Shape {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for r in 0..4 {
+            let (w, h) = self.dim(r);
+            writeln!(f, "Shape {r} dim: {w}x{h}")?;
+            let mut a =
+                [[false; Shape::TETROMINO_WIDTH as usize]; Shape::TETROMINO_HEIGHT as usize];
+            for (x, y) in self.coor(r) {
+                a[y as usize][x as usize] = true;
+            }
+            for row in a {
+                for b in row {
+                    write!(f, "{} ", if b { " X " } else { " O " })?
+                }
+                writeln!(f)?;
+            }
+        }
+        Ok(())
     }
-    max_v - min_v
 }
 
-fn width(p: u8, r: u8) -> u8 {
-    extent(p, r, coor_x)
-}
+struct Shape(u8);
 
-fn height(p: u8, r: u8) -> u8 {
-    extent(p, r, coor_y)
-}
+impl Shape {
+    const TETROMINO_HEIGHT: u8 = 4;
+    const TETROMINO_WIDTH: u8 = 4;
 
-fn new_tetramino(g: &mut Game) {
-    g.p = random::<u8>() % 7; // tetromino
-    g.pr = random::<u8>() % 4; // orientation
-    g.px = random::<u8>() % (10 - width(g.p, g.pr));
-    g.py = 0;
+    pub const fn kind(&self) -> u8 {
+        self.0
+    }
+
+    // rotate (x,y) coordinates by 0, 90, 180 or 270 degrees
+    const fn rotate(x: u8, y: u8, r: u8) -> (u8, u8) {
+        match r {
+            0 => (x, y),
+            1 => (Shape::TETROMINO_HEIGHT - 1 - y, x),
+            2 => (
+                Shape::TETROMINO_WIDTH - 1 - x,
+                Shape::TETROMINO_HEIGHT - 1 - y,
+            ),
+            3 => (y, Shape::TETROMINO_WIDTH - 1 - x),
+            _ => unimplemented!(),
+        }
+    }
+
+    // each shape has 4 blocks on
+    fn coor(&self, r: u8) -> [(u8, u8); 4] {
+        let mut a = [(0, 0); 4];
+        let mut min_x = u8::MAX;
+        let mut min_y = u8::MAX;
+        for (i, e) in a.iter_mut().enumerate() {
+            let x = (3 & BLOCK[self.0 as usize] >> 4 * i + 2) as u8;
+            let y = (3 & BLOCK[self.0 as usize] >> 4 * i) as u8;
+            *e = Self::rotate(x, y, r);
+            min_x = min_x.min(e.0);
+            min_y = min_y.min(e.1);
+        }
+        a.iter_mut().for_each(|e| {
+            e.0 -= min_x;
+            e.1 -= min_y
+        });
+        a
+    }
+
+    // width, height of shape
+    fn dim(&self, r: u8) -> (u8, u8) {
+        let mut max_x = u8::MIN;
+        let mut max_y = u8::MIN;
+        for (x, y) in self.coor(r) {
+            max_x = max_x.max(x);
+            max_y = max_y.max(y);
+        }
+        (max_x + 1, max_y + 1)
+    }
 }
 
 fn centered_x(s: &str) -> u16 {
@@ -93,10 +119,6 @@ fn centered_x(s: &str) -> u16 {
         }
         Err(_) => leftedge,
     }
-}
-
-fn level(g: &Game) -> u64 {
-    1 + g.tick / LEVEL_TICK_INCREASE
 }
 
 fn render_game_info(g: &Game) -> Result<()> {
@@ -117,9 +139,13 @@ fn render_game_info(g: &Game) -> Result<()> {
         cursor::MoveTo(i, 5.try_into().unwrap()),
         style::PrintStyledContent(format!("Score : {}", g.score).bold().white()),
         cursor::MoveTo(i, 6.try_into().unwrap()),
-        style::PrintStyledContent(format!("Level : {}", level(g)).bold().white()),
+        style::PrintStyledContent(format!("Level : {}", g.level()).bold().white()),
         cursor::MoveTo(i, 8.try_into().unwrap()),
-        style::PrintStyledContent(format!("Shape : {}.{}", g.p, g.pr).bold().white()),
+        style::PrintStyledContent(
+            format!("Shape : {}.{}", g.shape.kind(), g.orientation)
+                .bold()
+                .white()
+        ),
     )?;
     Ok(())
 }
@@ -137,20 +163,20 @@ fn draw_screen(g: &Game) -> Result<()> {
             crossterm::queue!(stdout, cursor::MoveTo(j * 2 + 1, i + 1)).ok();
             let s = match v {
                 0 => "  ".white(),
-                // 1 => "\u{16A0}\u{16A0}".on_red(),
-                // 2 => "\u{16A2}\u{16A2}".on_red(),
-                // 3 => "\u{16A5}\u{16A5}".on_red(),
-                // 4 => "\u{16A6}\u{16A6}".on_red(),
-                // 5 => "\u{16BC}\u{16BC}".on_red(),
-                // 6 => "\u{16AD}\u{16AD}".on_red(),
-                // _ => "\u{16D2}\u{16D2}".on_red(),
-                1 => "●●".on_blue(),
-                2 => "◎◎".blue().on_yellow(),
-                3 => "□□".on_green(),
-                4 => "◦◦".on_magenta(),
-                5 => "○○".on_dark_red(),
-                6 => "◼◼".on_cyan(),
-                _ => "◉◉".on_red(),
+                1 => "\u{16A0}\u{16A0}".on_red(),
+                2 => "\u{16A2}\u{16A2}".on_red(),
+                3 => "\u{16A5}\u{16A5}".on_red(),
+                4 => "\u{16A6}\u{16A6}".on_red(),
+                5 => "\u{16BC}\u{16BC}".on_red(),
+                6 => "\u{16AD}\u{16AD}".on_red(),
+                _ => "\u{16D2}\u{16D2}".on_red(),
+                // 1 => "●●".on_blue(),
+                // 2 => "◎◎".blue().on_yellow(),
+                // 3 => "□□".on_green(),
+                // 4 => "◦◦".on_magenta(),
+                // 5 => "○○".on_dark_red(),
+                // 6 => "◼◼".on_cyan(),
+                // _ => "◉◉".on_red(),
                 // 1 => "  ".on_blue(),
                 // 2 => "  ".on_yellow(),
                 // 3 => "  ".on_green(),
@@ -170,76 +196,124 @@ fn draw_screen(g: &Game) -> Result<()> {
     stdout.flush()
 }
 
+enum Move {
+    Left,
+    Right,
+    Down,
+    Rotate,
+}
+
 impl Game {
-    fn draw_tetramino(&mut self, v: u8) {
-        // 4 blocks
-        for i in 0..4 {
-            let idx_y = coor_y(self.p, self.pr, i) + self.py;
-            let idx_x = coor_x(self.p, self.pr, i) + self.px;
+    fn draw_tetromino(&mut self, v: u8) {
+        for (x, y) in self.shape.coor(self.orientation) {
+            let idx_x = x + self.px;
+            let idx_y = y + self.py;
             self.board[idx_y as usize][idx_x as usize] = v;
         }
     }
 
-    fn set_tetramino(&mut self) {
-        self.draw_tetramino(self.p + 1);
+    fn set_tetromino(&mut self) {
+        self.draw_tetromino(self.shape.kind() + 1);
     }
 
-    fn clear_tetramino(&mut self) {
-        self.draw_tetramino(0);
+    fn clear_tetromino(&mut self) {
+        self.draw_tetromino(0);
     }
-}
 
-// check if placing p at (x,y,r) will hit something
-fn try_move(g: &mut Game, x: u8, y: u8, r: u8) -> bool {
-    if y + height(g.p, r) >= BOARD_HEIGHT {
-        return false;
+    fn level(&self) -> u64 {
+        1 + self.tick / LEVEL_TICK_INCREASE
     }
-    g.clear_tetramino();
-    let hit = (0..4)
-        .any(|i| g.board[(y + coor_y(g.p, r, i)) as usize][(x + coor_x(g.p, r, i)) as usize] != 0);
-    g.set_tetramino();
-    if !hit {
-        g.clear_tetramino();
-        (g.px, g.py, g.pr) = (x, y, r);
-        g.set_tetramino();
-    }
-    !hit
-}
 
-fn wipe_filled_rows(g: &mut Game) {
-    //for row in g.y..=g.y + height(g.p, g.r) {
-    for row in g.py..=g.py + height(g.p, g.pr) {
-        if g.board[row as usize].iter().all(|&v| v != 0) {
-            for i in (1..row).rev() {
-                let i = i as usize;
-                g.board[i + 1] = g.board[i];
+    fn new_tetromino(&mut self) {
+        self.shape = Shape(random::<u8>() % 7);
+        self.orientation = random::<u8>() % 4;
+        let (width, _) = self.shape.dim(self.orientation);
+        self.px = random::<u8>() % (BOARD_WIDTH - width);
+        self.py = 0;
+    }
+
+    fn wipe_filled_rows(&mut self) {
+        let (_, height) = self.shape.dim(self.orientation);
+        for row in self.py..self.py + height {
+            if self.board[row as usize].iter().all(|&v| v != 0) {
+                for i in (1..row).rev() {
+                    let i = i as usize;
+                    self.board[i + 1] = self.board[i];
+                }
+                self.board[0].fill(0);
+                self.score += 1;
             }
-            g.board[0].fill(0);
-            g.score += 1;
         }
     }
-}
 
-fn do_tick(g: &mut Game) -> bool {
-    if g.paused {
-        return true;
-    }
-    g.tick = (g.tick + 1) % u64::MAX;
-    if g.tick % FRAMES_PER_DROP <= g.tick / LEVEL_TICK_INCREASE {
-        // only update some of the time...
-        if !try_move(g, g.px, g.py + 1, g.pr) {
-            if g.py == 0 {
-                return false; // overflow - game over
+    // move tetromino if does not hit anything
+    fn try_move(&mut self, m: Move) -> bool {
+        let (x, y, r) = match m {
+            Move::Left if self.px > 0 => (self.px - 1, self.py, self.orientation),
+            Move::Right => {
+                let (width, _) = self.shape.dim(self.orientation);
+                if self.px + width < BOARD_WIDTH {
+                    (self.px + 1, self.py, self.orientation)
+                } else {
+                    return false;
+                }
             }
-            wipe_filled_rows(g);
-            new_tetramino(g);
+            Move::Down => (self.px, self.py + 1, self.orientation),
+            Move::Rotate => {
+                let new_r = (self.orientation + 1) % 4;
+                // wall kick - shift left to make it fit
+                let (width, _) = self.shape.dim(new_r);
+                let new_x = if self.px + width > BOARD_WIDTH {
+                    BOARD_WIDTH - width
+                } else {
+                    self.px
+                };
+                (new_x, self.py, new_r)
+            }
+            _ => return false,
+        };
+
+        let (_, height) = self.shape.dim(r);
+        if y + height > BOARD_HEIGHT {
+            return false;
         }
+        self.clear_tetromino();
+        let hit = self.shape.coor(r).into_iter().any(|(sx, sy)| {
+            y + sy >= BOARD_HEIGHT
+                || x + sx >= BOARD_WIDTH
+                || self.board[(y + sy) as usize][(x + sx) as usize] != 0
+        });
+        self.set_tetromino();
+        if !hit {
+            self.clear_tetromino();
+            (self.px, self.py, self.orientation) = (x, y, r);
+            self.set_tetromino();
+        }
+        !hit
     }
-    true
+
+    fn do_tick(&mut self) -> bool {
+        if self.paused {
+            return true;
+        }
+        self.tick = (self.tick + 1) % u64::MAX;
+        if self.tick % FRAMES_PER_DROP <= self.tick / LEVEL_TICK_INCREASE {
+            // only update some of the time...
+            //if !self.try_move(self.px, self.py + 1, self.orientation) {
+            if !self.try_move(Move::Down) {
+                if self.py == 0 {
+                    return false; // overflow - game over
+                }
+                self.wipe_filled_rows();
+                self.new_tetromino();
+            }
+        }
+        true
+    }
 }
 
 fn runloop(g: &mut Game) -> Result<()> {
-    while do_tick(g) {
+    while g.do_tick() {
         if let Ok(true) = poll(time::Duration::from_millis(10)) {
             match read() {
                 Ok(Event::Key(KeyEvent {
@@ -254,40 +328,28 @@ fn runloop(g: &mut Game) -> Result<()> {
                     code: KeyCode::Left,
                     ..
                 })) => {
-                    if g.px > 0 {
-                        try_move(g, g.px - 1, g.py, g.pr);
-                    }
+                    g.try_move(Move::Left);
                 }
                 Ok(Event::Key(KeyEvent {
                     code: KeyCode::Right,
                     ..
                 })) => {
-                    if g.px + width(g.p, g.pr) < BOARD_WIDTH - 1 {
-                        try_move(g, g.px + 1, g.py, g.pr);
-                    }
+                    g.try_move(Move::Right);
                 }
                 Ok(Event::Key(KeyEvent {
                     code: KeyCode::Down,
                     ..
                 })) => {
-                    // drop
-                    while try_move(g, g.px, g.py + 1, g.pr) {
+                    while g.try_move(Move::Down) {
                         continue;
                     }
-                    wipe_filled_rows(g);
-                    new_tetramino(g);
+                    g.wipe_filled_rows();
+                    g.new_tetromino();
                 }
                 Ok(Event::Key(KeyEvent {
                     code: KeyCode::Up, ..
                 })) => {
-                    let new_r = (g.pr + 1) % 4;
-                    // wall kick - shift left to make it fit
-                    let new_x = if g.px + width(g.p, new_r) >= BOARD_WIDTH {
-                        BOARD_WIDTH - width(g.p, new_r) - 1
-                    } else {
-                        g.px
-                    };
-                    try_move(g, new_x, g.py, new_r);
+                    g.try_move(Move::Rotate);
                 }
                 _ => (),
             }
@@ -348,14 +410,14 @@ fn main() -> Result<()> {
     let mut game = Game {
         px: 0,
         py: 0,
-        pr: 0,
-        p: 0,
+        orientation: 0,
+        shape: Shape(0),
         tick: 0,
         score: 0,
         board: [[0; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
         paused: false,
     };
-    new_tetramino(&mut game);
+    game.new_tetromino();
 
     crossterm::queue!(
         stdout(),
@@ -378,6 +440,6 @@ fn main() -> Result<()> {
     )?;
     terminal::disable_raw_mode()?;
 
-    println!("Score: {}; Level: {}", game.score, level(&game));
+    println!("Score: {}; Level: {}", game.score, game.level());
     Ok(())
 }
