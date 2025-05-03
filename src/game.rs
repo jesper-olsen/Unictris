@@ -16,8 +16,7 @@ pub struct Tetromino {
 impl Tetromino {
     pub fn new(rng: &mut ThreadRng) -> Self {
         let orientation = rng.random::<u8>() % 4;
-        let kind = rng.random::<u8>() % 7;
-        let shape = Shape::new(kind);
+        let shape = Shape::random(rng);
         let (width, _) = shape.dim(orientation);
         let x = rng.random::<u8>() % (BOARD_WIDTH - width);
         Tetromino {
