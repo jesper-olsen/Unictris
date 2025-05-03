@@ -9,7 +9,7 @@ impl fmt::Display for Shape {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for r in 0..4 {
             let (w, h) = self.dim(r);
-            writeln!(f, "Shape {r} dim: {w}x{h}")?;
+            writeln!(f, "Shape {} orientation: {r} dim: {w}x{h}", self.0)?;
             let mut a =
                 [[false; Shape::TETROMINO_WIDTH as usize]; Shape::TETROMINO_HEIGHT as usize];
             for (x, y) in self.coor(r) {
