@@ -14,14 +14,16 @@ pub struct Tetromino {
 }
 
 impl Tetromino {
-    pub fn new() -> Self {
-        let orientation = random::<u8>() % 4;
-        let shape = Shape::new(random::<u8>() % 7);
+    pub fn new(rng: &mut ThreadRng) -> Self {
+        let orientation = rng.random::<u8>() % 4;
+        let kind = rng.random::<u8>() % 7;
+        let shape = Shape::new(kind);
         let (width, _) = shape.dim(orientation);
+        let x = rng.random::<u8>() % (BOARD_WIDTH - width);
         Tetromino {
             shape,
             orientation,
-            x: random::<u8>() % (BOARD_WIDTH - width),
+            x,
             y: 0,
         }
     }
@@ -67,16 +69,19 @@ pub struct Game {
     pub score: u32,
     pub board: Board,
     pub paused: bool,
+    rng: ThreadRng,
 }
 
 impl Default for Game {
     fn default() -> Game {
+        let mut rng = rand::rng();
         Game {
-            tetromino: Tetromino::new(),
+            tetromino: Tetromino::new(&mut rng),
             tick: 0,
             score: 0,
             board: Board::default(),
             paused: false,
+            rng,
         }
     }
 }
@@ -117,6 +122,7 @@ impl Game {
                 self.score += 1;
             }
         }
+        self.tetromino = Tetromino::new(&mut self.rng);
     }
 
     // move tetromino if it does not hit anything
@@ -180,7 +186,7 @@ impl Game {
                     return false; // overflow - game over
                 }
                 self.wipe_filled_rows();
-                self.tetromino = Tetromino::new();
+                self.tetromino = Tetromino::new(&mut self.rng);
             }
         }
         true

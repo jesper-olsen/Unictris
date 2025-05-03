@@ -7,5 +7,5 @@ edition = "2024"
 
 [dependencies]
 crossterm = "0.29.0"
-rand = "0.8.5"
-random = "0.13.2"
+rand = "0.9.1"
+random = "0.14.0"

@@ -10,7 +10,7 @@ use std::time;
 mod game;
 mod shape;
 
-use crate::game::{BOARD_HEIGHT, BOARD_WIDTH, Game, Move, Tetromino};
+use crate::game::{BOARD_HEIGHT, BOARD_WIDTH, Game, Move};
 
 fn centered_x(s: &str) -> u16 {
     let leftedge: u16 = 25;
@@ -134,7 +134,6 @@ fn runloop(g: &mut Game) -> Result<()> {
                         continue;
                     }
                     g.wipe_filled_rows();
-                    g.tetromino = Tetromino::new();
                 }
                 Ok(Event::Key(KeyEvent {
                     code: KeyCode::Up, ..
