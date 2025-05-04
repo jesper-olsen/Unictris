@@ -59,8 +59,7 @@ impl Shape {
     // each shape has 4 blocks on - return x,y of those four blocks
     pub const fn coor(&self, r: u8) -> [(u8, u8); 4] {
         let mut a = [(0, 0); 4];
-        let mut min_x = u8::MAX;
-        let mut min_y = u8::MAX;
+        let mut min_x @ mut min_y = u8::MAX;
         let mut i = 0;
         while i < Shape::TETROMINO_WIDTH as usize {
             let block = Shape::BLOCK[self.0 as usize];
