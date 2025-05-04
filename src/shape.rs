@@ -31,7 +31,6 @@ impl Shape {
     // Tetrominos - 7 shapes, 16 bits per shape.
     // Each shape is 4 squares inside a 4x4 block - we store x and y coordinates.
     // Hence we need need 4*(2+2)=16 bits to describe one shape,
-    // TODO: const encode for readability
     const BLOCK: [u16; 7] = [0x2154, 0x6510, 0x5140, 0x9840, 0x1654, 0x3210, 0x8951];
 
     pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {

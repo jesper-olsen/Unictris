@@ -15,10 +15,10 @@ pub struct Tetromino {
 
 impl Tetromino {
     pub fn new(rng: &mut ThreadRng) -> Self {
-        let orientation = rng.random::<u8>() % 4;
+        let orientation = rng.random_range(0..4);
         let shape = Shape::random(rng);
         let (width, _) = shape.dim(orientation);
-        let x = rng.random::<u8>() % (BOARD_WIDTH - width);
+        let x = rng.random_range(0..BOARD_WIDTH - width + 1);
         Tetromino {
             shape,
             orientation,
