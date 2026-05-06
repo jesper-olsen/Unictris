@@ -60,11 +60,11 @@ impl Shape {
     pub const fn coor(&self, r: u8) -> [(u8, u8); 4] {
         let mut a = [(0, 0); 4];
         let mut min_x @ mut min_y = u8::MAX;
+        let block = Shape::BLOCK[self.0 as usize];
         let mut i = 0;
         while i < Shape::TETROMINO_WIDTH as usize {
-            let block = Shape::BLOCK[self.0 as usize];
-            let x = (3 & block >> 4 * i + 2) as u8;
-            let y = (3 & block >> 4 * i) as u8;
+            let x = (3 & block >> (4 * i + 2)) as u8;
+            let y = (3 & block >> (4 * i)) as u8;
             a[i] = Self::rotate(x, y, r);
             min_x = if min_x <= a[i].0 { min_x } else { a[i].0 };
             min_y = if min_y <= a[i].1 { min_y } else { a[i].1 };

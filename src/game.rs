@@ -121,7 +121,6 @@ impl Game {
                 self.score += 1;
             }
         }
-        self.tetromino = Tetromino::new(&mut self.rng);
     }
 
     // move tetromino if it does not hit anything
@@ -177,7 +176,7 @@ impl Game {
         if self.paused {
             return true;
         }
-        self.tick = (self.tick + 1) % u64::MAX;
+        self.tick = self.tick.wrapping_add(1);
         if self.tick % FRAMES_PER_DROP <= self.tick / LEVEL_TICK_INCREASE {
             // only update some of the time...
             if !self.try_move(Move::Down) {
