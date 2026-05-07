@@ -119,9 +119,7 @@ fn runloop(g: &mut Game) -> Result<()> {
                             g.try_move(Move::Right);
                         }
                         KeyCode::Down => {
-                            while g.try_move(Move::Down) {
-                                continue;
-                            }
+                            while g.try_move(Move::Down) {}
                             g.wipe_filled_rows()
                         }
                         KeyCode::Up => {
