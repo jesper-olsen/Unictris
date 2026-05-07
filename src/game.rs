@@ -54,8 +54,7 @@ impl Board {
     }
 
     fn wipe(&mut self, row: u8) {
-        for i in (0..row).rev() {
-            let i = i as usize;
+        for i in (0..row as usize).rev() {
             self.board[i + 1] = self.board[i];
         }
         self.board[0].fill(0);
@@ -115,10 +114,21 @@ impl Game {
 
     pub fn wipe_filled_rows(&mut self) {
         let (_, height) = self.tetromino.shape.dim(self.tetromino.orientation);
-        for row in self.tetromino.y..self.tetromino.y + height {
+
+        let start = self.tetromino.y;
+        let end = start + height;
+
+        let mut row = end;
+
+        while row > start {
+            row -= 1;
+
             if self.board.is_filled(row) {
                 self.board.wipe(row);
                 self.score += 1;
+
+                // stay on same row because rows shifted down
+                row += 1;
             }
         }
     }
@@ -160,16 +170,17 @@ impl Game {
             y + sy >= BOARD_HEIGHT || x + sx >= BOARD_WIDTH || self.board.get(x + sx, y + sy) != 0
         });
         self.set_tetromino();
-        if !hit {
-            self.clear_tetromino();
-            (
-                self.tetromino.x,
-                self.tetromino.y,
-                self.tetromino.orientation,
-            ) = (x, y, r);
-            self.set_tetromino();
+        if hit {
+            return false;
         }
-        !hit
+        self.clear_tetromino();
+        (
+            self.tetromino.x,
+            self.tetromino.y,
+            self.tetromino.orientation,
+        ) = (x, y, r);
+        self.set_tetromino();
+        true
     }
 
     pub fn do_tick(&mut self) -> bool {
