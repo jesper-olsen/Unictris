@@ -1,6 +1,6 @@
 use crossterm::{
     QueueableCommand, cursor,
-    event::{Event, KeyCode, KeyEvent, poll, read},
+    event::{Event, KeyCode, KeyEventKind, poll, read},
     style::{self, Stylize},
     terminal,
 };
@@ -105,42 +105,32 @@ fn draw_screen(g: &Game) -> Result<()> {
 fn runloop(g: &mut Game) -> Result<()> {
     while g.do_tick() {
         if let Ok(true) = poll(time::Duration::from_millis(10)) {
-            match read() {
-                Ok(Event::Key(KeyEvent {
-                    code: KeyCode::Char('q'),
-                    ..
-                })) => return Ok(()),
-                Ok(Event::Key(KeyEvent {
-                    code: KeyCode::Char(' '),
-                    ..
-                })) => g.paused = !g.paused,
-                Ok(Event::Key(KeyEvent {
-                    code: KeyCode::Left,
-                    ..
-                })) => {
-                    g.try_move(Move::Left);
-                }
-                Ok(Event::Key(KeyEvent {
-                    code: KeyCode::Right,
-                    ..
-                })) => {
-                    g.try_move(Move::Right);
-                }
-                Ok(Event::Key(KeyEvent {
-                    code: KeyCode::Down,
-                    ..
-                })) => {
-                    while g.try_move(Move::Down) {
-                        continue;
+            match read()? {
+                Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
+                    match key_event.code {
+                        KeyCode::Char('q') => return Ok(()),
+                        KeyCode::Char(' ') => {
+                            g.paused = !g.paused;
+                        }
+                        KeyCode::Left => {
+                            g.try_move(Move::Left);
+                        }
+                        KeyCode::Right => {
+                            g.try_move(Move::Right);
+                        }
+                        KeyCode::Down => {
+                            while g.try_move(Move::Down) {
+                                continue;
+                            }
+                            g.wipe_filled_rows()
+                        }
+                        KeyCode::Up => {
+                            g.try_move(Move::Rotate);
+                        }
+                        _ => (),
                     }
-                    g.wipe_filled_rows();
                 }
-                Ok(Event::Key(KeyEvent {
-                    code: KeyCode::Up, ..
-                })) => {
-                    g.try_move(Move::Rotate);
-                }
-                _ => (),
+                _ => {}
             }
         }
         draw_screen(g)?;
