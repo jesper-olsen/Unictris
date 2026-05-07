@@ -12,7 +12,7 @@ mod shape;
 
 use crate::game::{BOARD_HEIGHT, BOARD_WIDTH, Game, Move};
 
-fn centered_x(s: &str) -> u16 {
+fn sidebar_center_x(s: &str) -> u16 {
     let leftedge: u16 = 25;
     let n: u16 = s.len().try_into().expect("really long string");
 
@@ -34,20 +34,20 @@ fn render_game_info(g: &Game) -> Result<()> {
 
     crossterm::queue!(
         stdout(),
-        cursor::MoveTo(centered_x(s1), 2),
+        cursor::MoveTo(sidebar_center_x(s1), 2),
         style::PrintStyledContent(s1.cyan()),
-        cursor::MoveTo(centered_x(s2), 3),
+        cursor::MoveTo(sidebar_center_x(s2), 3),
         style::PrintStyledContent(s2.yellow()),
     )?;
 
-    let i = centered_x("Score : 123456"); /* get a pos base on av score digits */
+    let i = sidebar_center_x("Score : 123456"); // get a pos based on av score digits 
     crossterm::queue!(
         stdout(),
-        cursor::MoveTo(i, 5.try_into().unwrap()),
+        cursor::MoveTo(i, 5),
         style::PrintStyledContent(format!("Score : {}", g.score).bold().white()),
-        cursor::MoveTo(i, 6.try_into().unwrap()),
+        cursor::MoveTo(i, 6),
         style::PrintStyledContent(format!("Level : {}", g.level()).bold().white()),
-        cursor::MoveTo(i, 8.try_into().unwrap()),
+        cursor::MoveTo(i, 8),
         style::PrintStyledContent(
             format!(
                 "Shape : {}.{}",
@@ -136,7 +136,7 @@ fn runloop(g: &mut Game) -> Result<()> {
     Ok(())
 }
 
-fn box_(x: u16, y: u16, width: u16, height: u16) -> Result<()> {
+fn draw_border(x: u16, y: u16, width: u16, height: u16) -> Result<()> {
     const TOP_LEFT: &str = "\u{250f}";
     const TOP_RIGHT: &str = "\u{2513}";
     const BOTTOM_LEFT: &str = "\u{2517}";
@@ -195,7 +195,7 @@ fn main() -> Result<()> {
         cursor::MoveTo(0, 0)
     )?;
     terminal::enable_raw_mode()?;
-    box_(0, 0, 21, 21)?;
+    draw_border(0, 0, 21, 21)?;
     runloop(&mut game)?;
 
     crossterm::queue!(
