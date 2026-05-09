@@ -104,31 +104,29 @@ fn draw_screen(g: &Game) -> Result<()> {
 
 fn runloop(g: &mut Game) -> Result<()> {
     while g.do_tick() {
-        if let Ok(true) = poll(time::Duration::from_millis(10)) {
-            match read()? {
-                Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                    match key_event.code {
-                        KeyCode::Char('q') => return Ok(()),
-                        KeyCode::Char(' ') => {
-                            g.paused = !g.paused;
-                        }
-                        KeyCode::Left => {
-                            g.try_move(Move::Left);
-                        }
-                        KeyCode::Right => {
-                            g.try_move(Move::Right);
-                        }
-                        KeyCode::Down => {
-                            while g.try_move(Move::Down) {}
-                            g.wipe_filled_rows()
-                        }
-                        KeyCode::Up => {
-                            g.try_move(Move::Rotate);
-                        }
-                        _ => (),
-                    }
+        if poll(time::Duration::from_millis(10))?
+            && let Event::Key(key_event) = read()?
+            && key_event.kind == KeyEventKind::Press
+        {
+            match key_event.code {
+                KeyCode::Char('q') => return Ok(()),
+                KeyCode::Char(' ') => {
+                    g.paused = !g.paused;
                 }
-                _ => {}
+                KeyCode::Left => {
+                    g.try_move(Move::Left);
+                }
+                KeyCode::Right => {
+                    g.try_move(Move::Right);
+                }
+                KeyCode::Down => {
+                    while g.try_move(Move::Down) {}
+                    g.wipe_filled_rows()
+                }
+                KeyCode::Up => {
+                    g.try_move(Move::Rotate);
+                }
+                _ => (),
             }
         }
         draw_screen(g)?;
