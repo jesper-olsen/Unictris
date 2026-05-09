@@ -10,7 +10,7 @@ use std::time;
 mod game;
 mod shape;
 
-use crate::game::{BOARD_HEIGHT, BOARD_WIDTH, Game, Move};
+use crate::game::{BOARD_HEIGHT, BOARD_WIDTH, Game};
 
 fn sidebar_center_x(s: &str) -> u16 {
     let leftedge: u16 = 25;
@@ -110,22 +110,11 @@ fn runloop(g: &mut Game) -> Result<()> {
         {
             match key_event.code {
                 KeyCode::Char('q') => return Ok(()),
-                KeyCode::Char(' ') => {
-                    g.paused = !g.paused;
-                }
-                KeyCode::Left => {
-                    g.try_move(Move::Left);
-                }
-                KeyCode::Right => {
-                    g.try_move(Move::Right);
-                }
-                KeyCode::Down => {
-                    while g.try_move(Move::Down) {}
-                    g.wipe_filled_rows()
-                }
-                KeyCode::Up => {
-                    g.try_move(Move::Rotate);
-                }
+                KeyCode::Char(' ') => g.paused = !g.paused,
+                KeyCode::Left => g.left(),
+                KeyCode::Right => g.right(),
+                KeyCode::Down => g.drop(),
+                KeyCode::Up => g.rotate(),
                 _ => (),
             }
         }

@@ -112,7 +112,7 @@ impl Game {
         1 + self.tick / LEVEL_TICK_INCREASE
     }
 
-    pub fn wipe_filled_rows(&mut self) {
+    fn wipe_filled_rows(&mut self) {
         let (_, height) = self.tetromino.shape.dim(self.tetromino.orientation);
 
         let start = self.tetromino.y;
@@ -132,53 +132,86 @@ impl Game {
             }
         }
     }
+    pub fn drop(&mut self) {
+        while self.try_move(Move::Down) {}
+        self.wipe_filled_rows()
+    }
 
-    // move tetromino if it does not hit anything
-    pub fn try_move(&mut self, m: Move) -> bool {
-        let tet = &mut self.tetromino;
-        let (x, y, r) = match m {
-            Move::Left if tet.x > 0 => (tet.x - 1, tet.y, tet.orientation),
+    pub fn left(&mut self) {
+        self.try_move(Move::Left);
+    }
+
+    pub fn right(&mut self) {
+        self.try_move(Move::Right);
+    }
+
+    pub fn rotate(&mut self) {
+        self.try_move(Move::Rotate);
+    }
+
+    fn move_to_pos(&self, m: Move) -> Option<(u8, u8, u8)> {
+        let (x, y, r) = (
+            self.tetromino.x,
+            self.tetromino.y,
+            self.tetromino.orientation,
+        );
+
+        match m {
+            Move::Left if x > 0 => Some((x - 1, y, r)),
+            Move::Left => None,
             Move::Right => {
-                let (width, _) = tet.shape.dim(tet.orientation);
-                if tet.x + width < BOARD_WIDTH {
-                    (tet.x + 1, tet.y, tet.orientation)
+                let (width, _) = self.tetromino.shape.dim(r);
+                if x + width < BOARD_WIDTH {
+                    Some((x + 1, y, r))
                 } else {
-                    return false;
+                    None
                 }
             }
-            Move::Down => (tet.x, tet.y + 1, tet.orientation),
+            Move::Down => {
+                let (_, height) = self.tetromino.shape.dim(r);
+                if y + 1 + height > BOARD_HEIGHT {
+                    None
+                } else {
+                    Some((x, y + 1, r))
+                }
+            }
             Move::Rotate => {
-                let new_r = (tet.orientation + 1) % 4;
+                let new_r = (r + 1) % 4;
                 // wall kick - shift left to make it fit
-                let (width, _) = tet.shape.dim(new_r);
-                let new_x = if tet.x + width > BOARD_WIDTH {
+                let (width, _) = self.tetromino.shape.dim(new_r);
+                let new_x = if x + width > BOARD_WIDTH {
                     BOARD_WIDTH - width
                 } else {
-                    tet.x
+                    x
                 };
-                (new_x, tet.y, new_r)
+                Some((new_x, y, new_r))
             }
-            _ => return false,
-        };
-
-        let (_, height) = tet.shape.dim(r);
-        if y + height > BOARD_HEIGHT {
-            return false;
         }
+    }
+
+    fn check_hit(&mut self, x: u8, y: u8, r: u8) -> bool {
         self.clear_tetromino();
         let hit = self.tetromino.shape.coor(r).into_iter().any(|(sx, sy)| {
             y + sy >= BOARD_HEIGHT || x + sx >= BOARD_WIDTH || self.board.get(x + sx, y + sy) != 0
         });
         self.set_tetromino();
-        if hit {
+        hit
+    }
+
+    fn try_move(&mut self, m: Move) -> bool {
+        let Some((x, y, r)) = self.move_to_pos(m) else {
+            return false;
+        };
+
+        if self.check_hit(x, y, r) {
             return false;
         }
+
+        // all clear - move tetramino --------------
         self.clear_tetromino();
-        (
-            self.tetromino.x,
-            self.tetromino.y,
-            self.tetromino.orientation,
-        ) = (x, y, r);
+        self.tetromino.x = x;
+        self.tetromino.y = y;
+        self.tetromino.orientation = r;
         self.set_tetromino();
         true
     }
