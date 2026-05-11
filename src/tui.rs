@@ -63,7 +63,10 @@ pub fn draw_screen(g: &Game) -> Result<()> {
 
     for y in 0..BOARD_HEIGHT {
         for x in 0..BOARD_WIDTH {
-            crossterm::queue!(stdout, cursor::MoveTo(x as u16 * 2 + 1, y as u16 + 1))?;
+            crossterm::queue!(
+                stdout,
+                cursor::MoveTo(u16::from(x) * 2 + 1, u16::from(y) + 1)
+            )?;
             let s = match g.board.get(x, y) {
                 0 => "  ".white(),
                 // 1 => "\u{16A0}\u{16A0}".on_red(),
@@ -91,8 +94,8 @@ pub fn draw_screen(g: &Game) -> Result<()> {
             crossterm::queue!(
                 stdout,
                 style::PrintStyledContent(s),
-                cursor::MoveTo((x as u16 + 1) * 2 + 1, y as u16 + 1)
-            )?
+                cursor::MoveTo((u16::from(x) + 1) * 2 + 1, u16::from(y) + 1)
+            )?;
         }
     }
     render_game_info(g)?;

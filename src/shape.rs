@@ -13,7 +13,7 @@ impl fmt::Display for Shape {
             }
             for row in a {
                 for b in row {
-                    write!(f, "{} ", if b { " X " } else { " O " })?
+                    write!(f, "{} ", if b { " X " } else { " O " })?;
                 }
                 writeln!(f)?;
             }
@@ -34,7 +34,7 @@ impl Shape {
     const BLOCK: [u16; 7] = [0x2154, 0x6510, 0x5140, 0x9840, 0x1654, 0x3210, 0x8951];
 
     pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
-        let kind = rng.random_range(0..Shape::BLOCK.len() as u8);
+        let kind = rng.random_range(0..7);
         Shape(kind)
     }
 
@@ -57,38 +57,34 @@ impl Shape {
     }
 
     // each shape has 4 blocks on - return x,y of those four blocks
-    pub const fn coor(&self, r: u8) -> [(u8, u8); 4] {
-        let mut a = [(0, 0); 4];
-        let mut min_x @ mut min_y = u8::MAX;
+    pub fn coor(&self, r: u8) -> [(u8, u8); 4] {
+        let mut out = [(0, 0); 4];
+        let mut min_x = u8::MAX;
+        let mut min_y = u8::MAX;
         let block = Shape::BLOCK[self.0 as usize];
-        let mut i = 0;
-        while i < Shape::TETROMINO_WIDTH as usize {
-            let x = (3 & block >> (4 * i + 2)) as u8;
-            let y = (3 & block >> (4 * i)) as u8;
-            a[i] = Self::rotate(x, y, r);
-            min_x = if min_x <= a[i].0 { min_x } else { a[i].0 };
-            min_y = if min_y <= a[i].1 { min_y } else { a[i].1 };
-            i += 1;
+        for (i, cell) in out.iter_mut().enumerate() {
+            let shift = 4 * i;
+            let x = ((block >> (shift + 2)) & 0b11) as u8;
+            let y = ((block >> shift) & 0b11) as u8;
+            *cell = Self::rotate(x, y, r);
+            min_x = min_x.min(cell.0);
+            min_y = min_y.min(cell.1);
         }
-        i = 0;
-        while i < Shape::TETROMINO_WIDTH as usize {
-            a[i].0 -= min_x;
-            a[i].1 -= min_y;
-            i += 1;
+        for (x, y) in &mut out {
+            *x -= min_x;
+            *y -= min_y;
         }
-        a
+        out
     }
 
     // width, height of shape
-    pub const fn dim(&self, r: u8) -> (u8, u8) {
+    pub fn dim(&self, r: u8) -> (u8, u8) {
         let mut max_x = u8::MIN;
         let mut max_y = u8::MIN;
         let a = self.coor(r);
-        let mut i = 0;
-        while i < a.len() {
-            max_x = if max_x >= a[i].0 { max_x } else { a[i].0 };
-            max_y = if max_y >= a[i].1 { max_y } else { a[i].1 };
-            i += 1;
+        for &(x, y) in &a {
+            max_x = max_x.max(x);
+            max_y = max_y.max(y);
         }
         (max_x + 1, max_y + 1)
     }

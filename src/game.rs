@@ -42,7 +42,7 @@ impl Default for Board {
 
 impl Board {
     fn set(&mut self, x: u8, y: u8, v: u8) {
-        self.board[y as usize][x as usize] = v
+        self.board[y as usize][x as usize] = v;
     }
 
     pub fn get(&self, x: u8, y: u8) -> u8 {
@@ -84,6 +84,7 @@ impl Default for Game {
     }
 }
 
+#[derive(Clone, Copy)]
 pub enum Move {
     Left,
     Right,
@@ -134,7 +135,7 @@ impl Game {
     }
     pub fn drop(&mut self) {
         while self.try_move(Move::Down) {}
-        self.wipe_filled_rows()
+        self.wipe_filled_rows();
     }
 
     pub fn left(&mut self) {
